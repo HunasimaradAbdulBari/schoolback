@@ -9,13 +9,18 @@ const studentRoutes = require('./routes/students');
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors(
+  {
+    origin: 'https://schoolfront.onrender.com', // your frontend domain
+    credentials: true
+}
+));
 app.use(express.json());
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI, {
-  // useNewUrlParser: true,
-  // useUnifiedTopology: true,
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
 })
 .then(() => console.log('MongoDB connected'))
 .catch(err => console.log(err));
