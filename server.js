@@ -11,7 +11,7 @@ const app = express();
 // Middleware
 app.use(cors(
   {
-    origin: 'https://schoolfront.onrender.com', // your frontend domain
+    origin: 'https://schoolfront-1.onrender.com', // your frontend domain
     credentials: true
 }
 ));
