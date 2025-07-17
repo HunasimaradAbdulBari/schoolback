@@ -2,43 +2,28 @@ const Student = require('../models/student');
 
 const createStudent = async (req, res) => {
   try {
-    console.log('Creating student with data:', req.body);
-    console.log('User creating student:', req.user);
-    
-    const { name, class: studentClass, feePaid, balance, date } = req.body;
-    
-    // Validate required fields
-    if (!name || !studentClass || feePaid === undefined || balance === undefined) {
-      return res.status(400).json({ 
-        message: 'Missing required fields',
-        required: ['name', 'class', 'feePaid', 'balance']
-      });
-    }
-    
+    const {
+      name, class: studentClass, feePaid, balance, date,
+      parentName, parentPhone, address, dateOfBirth,
+      bloodGroup, allergies
+    } = req.body;
+
+    const photoUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
     const student = new Student({
-      name,
-      class: studentClass,
-      feePaid: Number(feePaid),
-      balance: Number(balance),
-      date: date || new Date(),
-      createdBy: req.user._id,
+      name, class: studentClass, feePaid, balance, date: date || new Date(),
+      parentName, parentPhone, address, dateOfBirth,
+      bloodGroup, allergies, createdBy: req.user._id,
+      studentPhoto: photoUrl
     });
 
-    console.log('Student object before save:', student);
-    
-    const savedStudent = await student.save();
-    console.log('Student saved successfully:', savedStudent);
-    
-    res.status(201).json(savedStudent);
-  } catch (error) {
-    console.error('Error creating student:', error);
-    res.status(500).json({ 
-      message: 'Server error while creating student', 
-      error: error.message,
-      details: error
-    });
+    const saved = await student.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
+
 
 const getStudents = async (req, res) => {
   try {

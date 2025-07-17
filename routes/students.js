@@ -8,6 +8,10 @@ const {
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+const upload = require('../middleware/upload');
+
+router.post('/', auth, upload.single('studentPhoto'), createStudent);
+
 
 router.use(auth); // All routes require authentication
 
