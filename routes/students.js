@@ -13,6 +13,7 @@ const router = express.Router();
 // All routes require authentication
 router.use(auth);
 
+// Route definitions
 router.post('/', upload.single('studentPhoto'), createStudent);
 router.get('/', getStudents);
 router.put('/:id', updateStudent);

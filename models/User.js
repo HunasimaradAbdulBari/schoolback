@@ -9,27 +9,25 @@ const userSchema = new mongoose.Schema({
   username: {
     type: String,
     required: true,
-    unique: true // Ensure usernames are unique
+    unique: true
+  },
+  email: {
+    type: String,
+    required: false  // Optional since we have phone-based registration
   },
   phone: {
-  type: String,
-  required: true
-},
-
+    type: String,
+    required: true
+  },
   password: {
     type: String,
     required: true
   }
+}, {
+  timestamps: true
 });
 
-// ✅ REMOVE PRE-SAVE HOOK TO AVOID DOUBLE HASHING
-// The password is already being hashed in the authController
-// userSchema.pre('save', async function(next) {
-//   if (!this.isModified('password')) return next();
-//   this.password = await bcrypt.hash(this.password, 10);
-//   next();
-// });
-
+// Method to compare passwords
 userSchema.methods.comparePassword = async function(password) {
   return await bcrypt.compare(password, this.password);
 };
