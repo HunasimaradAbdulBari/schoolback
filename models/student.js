@@ -27,27 +27,28 @@ const studentSchema = new mongoose.Schema({
   // Additional fields that controller expects
   parentName: {
     type: String,
-    required: false,
+    required: true, // Changed to required
   },
   parentPhone: {
     type: String,
-    required: false,
+    required: true, // Changed to required
   },
   address: {
     type: String,
-    required: false,
+    required: true, // Changed to required
   },
   dateOfBirth: {
     type: Date,
-    required: false,
+    required: true, // Changed to required
   },
   bloodGroup: {
     type: String,
-    required: false,
+    required: true, // Changed to required
   },
   allergies: {
     type: String,
     required: false,
+    default: '',
   },
   studentPhoto: {
     type: String,
