@@ -24,35 +24,33 @@ const studentSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  // Additional fields that controller expects
   parentName: {
     type: String,
-    required: true, // Changed to required
+    required: true,
   },
   parentPhone: {
     type: String,
-    required: true, // Changed to required
+    required: true,
   },
   address: {
     type: String,
-    required: true, // Changed to required
+    required: true,
   },
   dateOfBirth: {
     type: Date,
-    required: true, // Changed to required
+    required: true,
   },
   bloodGroup: {
     type: String,
-    required: true, // Changed to required
+    required: true,
   },
   allergies: {
     type: String,
-    required: false,
     default: '',
   },
   studentPhoto: {
     type: String,
-    required: false,
+    default: null,
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
