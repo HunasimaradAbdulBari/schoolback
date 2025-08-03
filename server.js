@@ -9,19 +9,11 @@ const studentRoutes = require('./routes/students');
 
 const app = express();
 
-// ✅ FIXED: More flexible CORS configuration
-const corsOptions = {
-  origin: [
-    'https://astrapre-school.onrender.com', // production frontend
-    'http://localhost:3000', // local development
-    'http://127.0.0.1:3000', // alternative local
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-};
-
-app.use(cors(corsOptions));
+// Middleware - FIXED CORS for local development
+app.use(cors({
+  origin: ['http://localhost:3000', 'https://astrapre-school.onrender.com'], // Allow both local and production
+  credentials: true
+}));
 app.use(express.json());
 
 // ✅ FIXED: Static file serving for uploads
@@ -33,16 +25,11 @@ mongoose.connect(process.env.MONGODB_URI, {
   // useUnifiedTopology: true,
 })
 .then(() => console.log('MongoDB connected'))
-.catch(err => console.log(err));
+.catch(err => console.log('MongoDB connection error:', err));
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
 
-// ✅ NEW: Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
-});
-
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
