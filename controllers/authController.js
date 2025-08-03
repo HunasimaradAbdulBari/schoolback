@@ -2,7 +2,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// ✅ Simple registration - works with email OR without email
+// ✅ FIXED: Simple registration without OTP - works with email OR without email
 exports.register = async (req, res) => {
   try {
     console.log('🔍 Registration attempt:', req.body);
@@ -12,6 +12,13 @@ exports.register = async (req, res) => {
     if (!name || !username || !password) {
       return res.status(400).json({ 
         message: 'Name, username, and password are required' 
+      });
+    }
+
+    // Password strength validation
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        message: 'Password must be at least 6 characters long' 
       });
     }
 
@@ -29,7 +36,7 @@ exports.register = async (req, res) => {
       }
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     const userData = {
       name,
@@ -38,22 +45,36 @@ exports.register = async (req, res) => {
     };
 
     // Only add email if provided
-    if (email) {
-      userData.email = email;
+    if (email && email.trim()) {
+      userData.email = email.trim();
     }
 
     const user = new User(userData);
     await user.save();
     
     console.log('✅ User registered successfully:', user.username);
-    res.status(201).json({ message: 'User registered successfully' });
+    res.status(201).json({ 
+      message: 'User registered successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        username: user.username,
+        email: user.email || null
+      }
+    });
   } catch (err) {
     console.error('❌ Registration error:', err);
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern)[0];
+      return res.status(400).json({ 
+        message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists` 
+      });
+    }
     res.status(500).json({ message: 'Server error during registration' });
   }
 };
 
-// ✅ Login using username & password - FRONTEND COMPATIBLE
+// ✅ FIXED: Login using username & password - enhanced error handling
 exports.login = async (req, res) => {
   try {
     console.log('🔍 Login attempt:', { username: req.body.username });
@@ -83,14 +104,17 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid username or password' });
     }
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
-      expiresIn: '1d'
-    });
+    const token = jwt.sign(
+      { userId: user._id }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '24h' }
+    );
 
     console.log('✅ Login successful for user:', user.username);
 
     // ✅ FRONTEND-COMPATIBLE RESPONSE FORMAT
     const response = {
+      success: true,
       token,
       user: {
         _id: user._id,
