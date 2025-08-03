@@ -7,4 +7,9 @@
 /coverage
 
 # production
-/build
+/build.env
+
+
+.env
+uploads/
+node_modules/

@@ -24,6 +24,34 @@ const studentSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  parentName: {
+    type: String,
+    required: true,
+  },
+  parentPhone: {
+    type: String,
+    required: true,
+  },
+  address: {
+    type: String,
+    required: true,
+  },
+  dateOfBirth: {
+    type: Date,
+    required: true,
+  },
+  bloodGroup: {
+    type: String,
+    required: true,
+  },
+  allergies: {
+    type: String,
+    default: '',
+  },
+  studentPhoto: {
+    type: String,
+    default: null,
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
