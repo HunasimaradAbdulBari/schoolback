@@ -9,7 +9,7 @@ const studentRoutes = require('./routes/students');
 
 const app = express();
 
-// ✅ Simple CORS Configuration (Fixed for compatibility)
+// ✅ FIXED: Strict CORS Configuration for production
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
@@ -27,7 +27,8 @@ app.use(cors({
       callback(null, true);
     } else {
       console.log('❌ CORS blocked for:', origin);
-      callback(null, true); // Allow all origins for now to fix the issue
+      // ✅ FIXED: Proper CORS rejection instead of allowing all
+      callback(new Error('Not allowed by CORS'), false);
     }
   },
   credentials: true,
@@ -50,8 +51,8 @@ app.use((req, res, next) => {
 
 // ✅ Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
+  res.status(200).json({
+    status: 'OK',
     message: 'Astra Preschool API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
@@ -64,7 +65,7 @@ app.get('/health', (req, res) => {
 
 // ✅ Root endpoint
 app.get('/', (req, res) => {
-  res.status(200).json({ 
+  res.status(200).json({
     message: 'Astra Preschool API Server',
     version: '1.0.0',
     status: 'running',
@@ -86,7 +87,7 @@ app.use('/api/students', studentRoutes);
 
 // ✅ 404 handler for API routes
 app.use('/api/*', (req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     error: 'API endpoint not found',
     path: req.path,
     method: req.method
@@ -106,18 +107,14 @@ app.use((error, req, res, next) => {
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/astra-preschool';
-    
     await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
-    
     console.log('✅ MongoDB connected successfully');
     console.log('📍 Database:', process.env.MONGODB_URI ? 'Cloud MongoDB' : 'Local MongoDB');
-    
   } catch (err) {
     console.error('❌ MongoDB connection error:', err.message);
-    
     // Don't exit in production, keep trying
     if (process.env.NODE_ENV !== 'production') {
       process.exit(1);
@@ -151,14 +148,14 @@ process.on('SIGINT', async () => {
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀='.repeat(50));
+  console.log('🚀=' .repeat(50));
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📡 CORS enabled for:`);
-  console.log(`   - Local: http://localhost:3000`);
-  console.log(`   - Frontend: https://astrapre-school.onrender.com`);
-  console.log(`   - Backend: https://astrawebserver.onrender.com`);
-  console.log('🚀='.repeat(50));
+  console.log(`  - Local: http://localhost:3000`);
+  console.log(`  - Frontend: https://astrapre-school.onrender.com`);
+  console.log(`  - Backend: https://astrawebserver.onrender.com`);
+  console.log('🚀=' .repeat(50));
 });
 
 // ✅ Handle server errors
