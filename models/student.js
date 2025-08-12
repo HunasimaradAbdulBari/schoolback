@@ -24,35 +24,25 @@ const studentSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  // 🔧 FIXED: Made optional fields actually optional to prevent validation errors
   parentName: {
     type: String,
-    required: false, // Changed from true to false
-    default: '', // Added default empty string
+    required: true,
   },
   parentPhone: {
     type: String,
-    required: false, // Changed from true to false
-    default: '', // Added default empty string
+    required: true,
   },
   address: {
     type: String,
-    required: false, // Changed from true to false
-    default: '', // Added default empty string
+    required: true,
   },
   dateOfBirth: {
     type: Date,
-    required: false, // Changed from true to false
-    default: null, // Added default null
+    required: true,
   },
   bloodGroup: {
     type: String,
-    required: false, // Changed from true to false
-    default: '', // Added default empty string
-    enum: {
-      values: ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
-      message: 'Invalid blood group'
-    }
+    required: true,
   },
   allergies: {
     type: String,
@@ -69,21 +59,6 @@ const studentSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true,
-});
-
-// 🔧 ADDED: Pre-save middleware to handle empty strings properly
-studentSchema.pre('save', function(next) {
-  // Convert empty strings to null for date fields
-  if (this.dateOfBirth === '') {
-    this.dateOfBirth = null;
-  }
-  
-  // Ensure bloodGroup enum validation works with empty strings
-  if (this.bloodGroup === '') {
-    this.bloodGroup = '';
-  }
-  
-  next();
 });
 
 module.exports = mongoose.model('Student', studentSchema);
