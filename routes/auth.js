@@ -1,4 +1,7 @@
 const express = require('express');
+const router = express.Router();
+
+// Import controller functions
 const {
   sendOtp,
   verifyOtpAndRegister,
@@ -6,9 +9,24 @@ const {
   login
 } = require('../controllers/authController');
 
-const router = express.Router();
+// Validate that all functions are imported correctly
+console.log('Auth controller functions check:', {
+  sendOtp: typeof sendOtp,
+  verifyOtpAndRegister: typeof verifyOtpAndRegister,
+  register: typeof register,
+  login: typeof login
+});
 
-// OTP routes
+// Health check route for auth
+router.get('/health', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Auth routes are working',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// OTP routes (disabled but kept for compatibility)
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp-register', verifyOtpAndRegister);
 
