@@ -8,7 +8,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['https://schoolfront-1.onrender.com', 'http://localhost:3000'], // Add localhost for development
+  origin: ['https://schoolfront-1.onrender.com', 'http://localhost:3000'], 
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -22,13 +22,11 @@ app.get('/', (req, res) => {
   res.json({ message: 'Server is running successfully!' });
 });
 
-// Database connection
+// Database connection - FIXED: Removed deprecated options
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // ✅ FIXED: Remove deprecated options
+    const conn = await mongoose.connect(process.env.MONGODB_URI);
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('MongoDB connection error:', error);
@@ -69,6 +67,7 @@ app.use('*', (req, res) => {
   });
 });
 
+// ✅ FIXED: Ensure correct port is used
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
