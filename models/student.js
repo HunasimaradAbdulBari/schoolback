@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const studentSchema = new mongoose.Schema({
-  // 🆕 NEW: Student ID field - Required and unique
+  // Student ID field - Required and unique
   studentId: {
     type: String,
     required: [true, 'Student ID is required'],
@@ -75,7 +75,7 @@ const studentSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// 🆕 NEW: Add index for faster Student ID queries
-studentSchema.index({ studentId: 1 });
+// ✅ FIXED: Remove manual index creation to avoid duplicate index warning
+// MongoDB will automatically create index for unique fields
 
 module.exports = mongoose.model('Student', studentSchema);
