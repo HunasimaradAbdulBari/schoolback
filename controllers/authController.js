@@ -2,8 +2,8 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// ✅ FIXED: Simple registration without OTP - works with email OR without email
-exports.register = async (req, res) => {
+// Registration function
+const register = async (req, res) => {
   try {
     console.log('🔍 Registration attempt:', req.body);
     const { name, email, username, password } = req.body;
@@ -34,8 +34,8 @@ exports.register = async (req, res) => {
     }
 
     // Check if email exists (only if email is provided)
-    if (email) {
-      const existingEmail = await User.findOne({ email });
+    if (email && email.trim()) {
+      const existingEmail = await User.findOne({ email: email.trim() });
       if (existingEmail) {
         return res.status(400).json({ 
           success: false,
@@ -46,8 +46,8 @@ exports.register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 12);
     const userData = {
-      name,
-      username,
+      name: name.trim(),
+      username: username.trim(),
       password: hashedPassword
     };
 
@@ -61,7 +61,6 @@ exports.register = async (req, res) => {
 
     console.log('✅ User registered successfully:', user.username);
 
-    // ✅ FIXED: Consistent response format
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
@@ -75,11 +74,20 @@ exports.register = async (req, res) => {
 
   } catch (err) {
     console.error('❌ Registration error:', err);
+    
     if (err.code === 11000) {
       const field = Object.keys(err.keyPattern)[0];
       return res.status(400).json({
         success: false,
         message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`
+      });
+    }
+
+    if (err.name === 'ValidationError') {
+      const firstError = Object.values(err.errors)[0];
+      return res.status(400).json({
+        success: false,
+        message: firstError.message
       });
     }
 
@@ -90,8 +98,8 @@ exports.register = async (req, res) => {
   }
 };
 
-// ✅ FIXED: Login using username & password - enhanced error handling
-exports.login = async (req, res) => {
+// Login function
+const login = async (req, res) => {
   try {
     console.log('🔍 Login attempt:', { username: req.body.username });
     const { username, password } = req.body;
@@ -107,8 +115,8 @@ exports.login = async (req, res) => {
     // Find user by username OR email
     const user = await User.findOne({
       $or: [
-        { username: username },
-        { email: username }
+        { username: username.trim() },
+        { email: username.trim() }
       ]
     });
 
@@ -137,7 +145,6 @@ exports.login = async (req, res) => {
 
     console.log('✅ Login successful for user:', user.username);
 
-    // ✅ FIXED: Consistent response format matching frontend expectations
     const response = {
       success: true,
       token,
@@ -162,4 +169,26 @@ exports.login = async (req, res) => {
       message: 'Server error during login' 
     });
   }
+};
+
+// Dummy OTP functions for compatibility (not used but needed for routes)
+const sendOtp = async (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'OTP functionality is currently disabled'
+  });
+};
+
+const verifyOtpAndRegister = async (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'OTP functionality is currently disabled'
+  });
+};
+
+module.exports = {
+  register,
+  login,
+  sendOtp,
+  verifyOtpAndRegister
 };
