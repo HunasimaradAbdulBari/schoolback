@@ -3,7 +3,28 @@ const Student = require('../models/student');
 const Otp = require('../models/Otp');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const smsService = require('../services/smsService');
+
+// Import SMS service with error handling
+let smsService = null;
+try {
+  smsService = require('../services/smsService');
+  console.log('✅ SMS Service loaded successfully');
+} catch (error) {
+  console.warn('⚠️ SMS Service not available:', error.message);
+  // Create minimal fallback functions
+  smsService = {
+    validatePhoneNumber: (phone) => {
+      const cleaned = phone.replace(/\D/g, '');
+      if (/^[6-9]\d{9}$/.test(cleaned)) {
+        return { isValid: true, cleanedNumber: cleaned, format: 'indian' };
+      }
+      return { isValid: false, error: 'Invalid phone number format' };
+    },
+    detectCarrier: () => 'airtel',
+    sendOTPSMS: async () => ({ success: false, error: 'SMS service not configured' }),
+    sendWelcomeSMS: async () => ({ success: false, error: 'SMS service not configured' })
+  };
+}
 
 // Admin registration function (unchanged for backward compatibility)
 const register = async (req, res) => {
@@ -135,7 +156,7 @@ const login = async (req, res) => {
     }
 
     // Check if account is active
-    if (!user.isActive) {
+    if (user.isActive === false) {
       return res.status(400).json({ 
         success: false,
         message: 'Account is deactivated. Please contact administration.' 
@@ -155,7 +176,7 @@ const login = async (req, res) => {
     const token = jwt.sign(
       { 
         userId: user._id,
-        role: user.role 
+        role: user.role || 'admin' // Default to admin for existing users
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
@@ -170,7 +191,7 @@ const login = async (req, res) => {
         _id: user._id,
         name: user.name,
         username: user.username,
-        role: user.role,
+        role: user.role || 'admin',
         studentIds: user.studentIds || []
       }
     };
@@ -194,6 +215,13 @@ const login = async (req, res) => {
 const sendOtp = async (req, res) => {
   try {
     const { phone, carrier } = req.body;
+
+    if (!smsService) {
+      return res.status(503).json({
+        success: false,
+        message: 'SMS service is not configured. Please contact administrator.'
+      });
+    }
 
     // Validate phone number
     const phoneValidation = smsService.validatePhoneNumber(phone);
@@ -314,7 +342,8 @@ const verifyOtpAndRegister = async (req, res) => {
       role: 'parent',
       carrier: carrier || smsService.detectCarrier(cleanedPhone),
       isPhoneVerified: true,
-      studentIds: matchingStudents.map(student => student._id)
+      studentIds: matchingStudents.map(student => student._id),
+      isActive: true
     };
 
     const user = new User(userData);
@@ -323,10 +352,14 @@ const verifyOtpAndRegister = async (req, res) => {
     // Clean up OTP
     await Otp.deleteMany({ phone: cleanedPhone });
 
-    // Send welcome SMS
-    if (matchingStudents.length > 0) {
+    // Send welcome SMS if service is available
+    if (matchingStudents.length > 0 && smsService.sendWelcomeSMS) {
       const studentNames = matchingStudents.map(s => s.name).join(', ');
-      await smsService.sendWelcomeSMS(cleanedPhone, userData.carrier, studentNames);
+      try {
+        await smsService.sendWelcomeSMS(cleanedPhone, userData.carrier, studentNames);
+      } catch (smsError) {
+        console.warn('Warning: Welcome SMS failed:', smsError.message);
+      }
     }
 
     console.log('✅ Parent registered successfully:', cleanedPhone, 'with', matchingStudents.length, 'students');
@@ -374,6 +407,13 @@ const verifyOtpAndRegister = async (req, res) => {
 const resendOtp = async (req, res) => {
   try {
     const { phone, carrier } = req.body;
+
+    if (!smsService || !smsService.sendOTPSMS) {
+      return res.status(503).json({
+        success: false,
+        message: 'SMS service is not configured'
+      });
+    }
 
     const phoneValidation = smsService.validatePhoneNumber(phone);
     if (!phoneValidation.isValid) {
