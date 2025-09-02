@@ -114,10 +114,7 @@ paymentSchema.pre('save', async function(next) {
   next();
 });
 
-// Index for efficient queries
-paymentSchema.index({ studentId: 1, parentId: 1 });
-paymentSchema.index({ status: 1 });
-paymentSchema.index({ createdAt: -1 });
-paymentSchema.index({ receiptNumber: 1 });
+// REMOVED MANUAL INDEX CREATION - Let MongoDB handle it automatically
+// This prevents the duplicate index warning
 
 module.exports = mongoose.model('Payment', paymentSchema);
