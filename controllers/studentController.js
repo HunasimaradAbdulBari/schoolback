@@ -1,6 +1,23 @@
 const Student = require('../models/student');
 const User = require('../models/User');
-const smsService = require('../services/smsService');
+
+// Import smsService with error handling
+let smsService;
+try {
+  smsService = require('../services/smsService');
+} catch (error) {
+  console.warn('SMS Service not available:', error.message);
+  // Create fallback functions
+  smsService = {
+    validatePhoneNumber: (phone) => {
+      const cleaned = phone.replace(/\D/g, '');
+      if (/^[6-9]\d{9}$/.test(cleaned)) {
+        return { isValid: true, cleanedNumber: cleaned, format: 'indian' };
+      }
+      return { isValid: false, error: 'Invalid phone number format' };
+    }
+  };
+}
 
 const createStudent = async (req, res) => {
   try {
@@ -27,73 +44,8 @@ const createStudent = async (req, res) => {
     }
 
     // Validate phone number if provided
-    if (parentPhone) {
+    if (parentPhone && smsService.validatePhoneNumber) {
       const phoneValidation = smsService.validatePhoneNumber(parentPhone);
-    if (!phoneValidation.isValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid phone number format'
-      });
-    }
-
-    const cleanedPhone = phoneValidation.cleanedNumber;
-
-    // Find parent user
-    const parent = await User.findOne({ 
-      phone: cleanedPhone,
-      role: 'parent'
-    });
-
-    if (!parent) {
-      return res.status(404).json({
-        success: false,
-        message: 'Parent account not found with this phone number'
-      });
-    }
-
-    // Check if already linked
-    if (parent.studentIds.includes(studentId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Student already linked to this parent'
-      });
-    }
-
-    // Add student to parent's account
-    parent.studentIds.push(studentId);
-    await parent.save();
-
-    // Update student's parent phone if different
-    if (student.parentPhone !== cleanedPhone) {
-      student.parentPhone = cleanedPhone;
-      await student.save();
-    }
-
-    res.json({
-      success: true,
-      message: 'Student linked to parent successfully',
-      parentName: parent.name,
-      studentName: student.name
-    });
-
-  } catch (error) {
-    console.error('❌ Link student to parent error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to link student to parent'
-    });
-  }
-};
-
-module.exports = {
-  createStudent,
-  getStudents,
-  updateStudent,
-  deleteStudent,
-  getStudentDetails,
-  getStudentsByParentPhone,
-  linkStudentToParent
-};
       if (!phoneValidation.isValid) {
         return res.status(400).json({
           message: 'Invalid parent phone number format'
@@ -124,18 +76,22 @@ module.exports = {
 
     // Auto-link to existing parent account if phone matches
     if (savedStudent.parentPhone) {
-      const parentUser = await User.findOne({ 
-        phone: savedStudent.parentPhone,
-        role: 'parent'
-      });
+      try {
+        const parentUser = await User.findOne({ 
+          phone: savedStudent.parentPhone,
+          role: 'parent'
+        });
 
-      if (parentUser) {
-        // Add student to parent's studentIds if not already linked
-        if (!parentUser.studentIds.includes(savedStudent._id)) {
-          parentUser.studentIds.push(savedStudent._id);
-          await parentUser.save();
-          console.log('✅ Student auto-linked to existing parent account:', parentUser.name);
+        if (parentUser) {
+          // Add student to parent's studentIds if not already linked
+          if (!parentUser.studentIds.includes(savedStudent._id)) {
+            parentUser.studentIds.push(savedStudent._id);
+            await parentUser.save();
+            console.log('✅ Student auto-linked to existing parent account:', parentUser.name);
+          }
         }
+      } catch (linkError) {
+        console.warn('Warning: Could not auto-link to parent:', linkError.message);
       }
     }
 
@@ -261,7 +217,7 @@ const updateStudent = async (req, res) => {
     }
 
     // Validate phone number if being updated (admin only)
-    if (updates.parentPhone && req.user.role === 'admin') {
+    if (updates.parentPhone && req.user.role === 'admin' && smsService.validatePhoneNumber) {
       const phoneValidation = smsService.validatePhoneNumber(updates.parentPhone);
       if (!phoneValidation.isValid) {
         return res.status(400).json({
@@ -284,22 +240,26 @@ const updateStudent = async (req, res) => {
 
     // If phone number was updated by admin, update parent linking
     if (updates.parentPhone && req.user.role === 'admin') {
-      // Remove student from old parent accounts
-      await User.updateMany(
-        { role: 'parent', studentIds: student._id },
-        { $pull: { studentIds: student._id } }
-      );
+      try {
+        // Remove student from old parent accounts
+        await User.updateMany(
+          { role: 'parent', studentIds: student._id },
+          { $pull: { studentIds: student._id } }
+        );
 
-      // Link to new parent account if exists
-      const newParent = await User.findOne({ 
-        phone: updates.parentPhone,
-        role: 'parent'
-      });
+        // Link to new parent account if exists
+        const newParent = await User.findOne({ 
+          phone: updates.parentPhone,
+          role: 'parent'
+        });
 
-      if (newParent && !newParent.studentIds.includes(student._id)) {
-        newParent.studentIds.push(student._id);
-        await newParent.save();
-        console.log('✅ Student re-linked to parent:', newParent.name);
+        if (newParent && !newParent.studentIds.includes(student._id)) {
+          newParent.studentIds.push(student._id);
+          await newParent.save();
+          console.log('✅ Student re-linked to parent:', newParent.name);
+        }
+      } catch (linkError) {
+        console.warn('Warning: Could not update parent linking:', linkError.message);
       }
     }
 
@@ -349,10 +309,14 @@ const deleteStudent = async (req, res) => {
     }
 
     // Remove student from all parent accounts
-    await User.updateMany(
-      { role: 'parent', studentIds: id },
-      { $pull: { studentIds: id } }
-    );
+    try {
+      await User.updateMany(
+        { role: 'parent', studentIds: id },
+        { $pull: { studentIds: id } }
+      );
+    } catch (linkError) {
+      console.warn('Warning: Could not remove student from parent accounts:', linkError.message);
+    }
 
     console.log('Student deleted successfully:', student.name, '(ID:', student.studentId, ')');
     res.json({ message: 'Student deleted successfully' });
@@ -418,16 +382,20 @@ const getStudentsByParentPhone = async (req, res) => {
       });
     }
 
-    const phoneValidation = smsService.validatePhoneNumber(phone);
-    if (!phoneValidation.isValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid phone number format'
-      });
+    let cleanedPhone = phone;
+    if (smsService.validatePhoneNumber) {
+      const phoneValidation = smsService.validatePhoneNumber(phone);
+      if (!phoneValidation.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid phone number format'
+        });
+      }
+      cleanedPhone = phoneValidation.cleanedNumber;
     }
 
     const students = await Student.find({ 
-      parentPhone: phoneValidation.cleanedNumber 
+      parentPhone: cleanedPhone 
     }).select('name studentId class feePaid balance');
 
     res.json({
@@ -466,4 +434,71 @@ const linkStudentToParent = async (req, res) => {
       });
     }
 
-    const phoneValidation = smsService.validatePhoneNumber(parentPhone);
+    let cleanedPhone = parentPhone;
+    if (smsService.validatePhoneNumber) {
+      const phoneValidation = smsService.validatePhoneNumber(parentPhone);
+      if (!phoneValidation.isValid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid phone number format'
+        });
+      }
+      cleanedPhone = phoneValidation.cleanedNumber;
+    }
+
+    // Find parent user
+    const parent = await User.findOne({ 
+      phone: cleanedPhone,
+      role: 'parent'
+    });
+
+    if (!parent) {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent account not found with this phone number'
+      });
+    }
+
+    // Check if already linked
+    if (parent.studentIds.includes(studentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student already linked to this parent'
+      });
+    }
+
+    // Add student to parent's account
+    parent.studentIds.push(studentId);
+    await parent.save();
+
+    // Update student's parent phone if different
+    if (student.parentPhone !== cleanedPhone) {
+      student.parentPhone = cleanedPhone;
+      await student.save();
+    }
+
+    res.json({
+      success: true,
+      message: 'Student linked to parent successfully',
+      parentName: parent.name,
+      studentName: student.name
+    });
+
+  } catch (error) {
+    console.error('❌ Link student to parent error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to link student to parent'
+    });
+  }
+};
+
+module.exports = {
+  createStudent,
+  getStudents,
+  updateStudent,
+  deleteStudent,
+  getStudentDetails,
+  getStudentsByParentPhone,
+  linkStudentToParent
+};
