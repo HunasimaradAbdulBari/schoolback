@@ -1,11 +1,14 @@
 const User = require('../models/User');
+const Student = require('../models/student');
+const Otp = require('../models/Otp');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const smsService = require('../services/smsService');
 
-// Registration function
+// Admin registration function (unchanged for backward compatibility)
 const register = async (req, res) => {
   try {
-    console.log('🔍 Registration attempt:', req.body);
+    console.log('🔍 Admin registration attempt:', req.body);
     const { name, email, username, password } = req.body;
 
     // Basic validation
@@ -48,7 +51,8 @@ const register = async (req, res) => {
     const userData = {
       name: name.trim(),
       username: username.trim(),
-      password: hashedPassword
+      password: hashedPassword,
+      role: 'admin' // Default to admin for backward compatibility
     };
 
     // Only add email if provided
@@ -59,16 +63,17 @@ const register = async (req, res) => {
     const user = new User(userData);
     await user.save();
 
-    console.log('✅ User registered successfully:', user.username);
+    console.log('✅ Admin user registered successfully:', user.username);
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: 'Admin user registered successfully',
       user: {
         _id: user._id,
         name: user.name,
         username: user.username,
-        email: user.email || null
+        email: user.email || null,
+        role: user.role
       }
     });
 
@@ -98,7 +103,7 @@ const register = async (req, res) => {
   }
 };
 
-// Login function
+// Enhanced login function with role-based authentication
 const login = async (req, res) => {
   try {
     console.log('🔍 Login attempt:', { username: req.body.username });
@@ -112,19 +117,28 @@ const login = async (req, res) => {
       });
     }
 
-    // Find user by username OR email
+    // Find user by username, email, or phone
     const user = await User.findOne({
       $or: [
         { username: username.trim() },
-        { email: username.trim() }
+        { email: username.trim() },
+        { phone: username.trim() }
       ]
-    });
+    }).populate('studentIds', 'name studentId class');
 
     if (!user) {
       console.log('❌ User not found:', username);
       return res.status(400).json({ 
         success: false,
-        message: 'Invalid username or password' 
+        message: 'Invalid credentials' 
+      });
+    }
+
+    // Check if account is active
+    if (!user.isActive) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Account is deactivated. Please contact administration.' 
       });
     }
 
@@ -133,17 +147,21 @@ const login = async (req, res) => {
       console.log('❌ Password mismatch for user:', username);
       return res.status(400).json({ 
         success: false,
-        message: 'Invalid username or password' 
+        message: 'Invalid credentials' 
       });
     }
 
+    // Generate token with role information
     const token = jwt.sign(
-      { userId: user._id },
+      { 
+        userId: user._id,
+        role: user.role 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    console.log('✅ Login successful for user:', user.username);
+    console.log('✅ Login successful for user:', user.username, 'Role:', user.role);
 
     const response = {
       success: true,
@@ -151,14 +169,15 @@ const login = async (req, res) => {
       user: {
         _id: user._id,
         name: user.name,
-        username: user.username
+        username: user.username,
+        role: user.role,
+        studentIds: user.studentIds || []
       }
     };
 
-    // Add email to response only if it exists
-    if (user.email) {
-      response.user.email = user.email;
-    }
+    // Add email and phone to response if they exist
+    if (user.email) response.user.email = user.email;
+    if (user.phone) response.user.phone = user.phone;
 
     res.json(response);
 
@@ -171,24 +190,317 @@ const login = async (req, res) => {
   }
 };
 
-// Dummy OTP functions for compatibility (not used but needed for routes)
+// NEW: Send OTP for parent registration
 const sendOtp = async (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'OTP functionality is currently disabled'
-  });
+  try {
+    const { phone, carrier } = req.body;
+
+    // Validate phone number
+    const phoneValidation = smsService.validatePhoneNumber(phone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: phoneValidation.error
+      });
+    }
+
+    const cleanedPhone = phoneValidation.cleanedNumber;
+
+    // Check if phone already registered
+    const existingUser = await User.findOne({ phone: cleanedPhone });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number already registered'
+      });
+    }
+
+    // Auto-detect carrier if not provided
+    const selectedCarrier = carrier || smsService.detectCarrier(cleanedPhone);
+
+    // Send OTP via SMS
+    const otpResult = await smsService.sendOTPSMS(cleanedPhone, selectedCarrier);
+    
+    if (!otpResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP. Please try again.'
+      });
+    }
+
+    // Store OTP in database
+    await Otp.deleteMany({ phone: cleanedPhone }); // Remove any existing OTPs
+    const otpDoc = new Otp({
+      phone: cleanedPhone,
+      otp: otpResult.otp
+    });
+    await otpDoc.save();
+
+    console.log('✅ OTP sent successfully to:', cleanedPhone);
+
+    res.json({
+      success: true,
+      message: 'OTP sent successfully to your phone number',
+      phone: cleanedPhone
+    });
+
+  } catch (error) {
+    console.error('❌ Send OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send OTP. Please try again.'
+    });
+  }
 };
 
+// NEW: Verify OTP and register parent
 const verifyOtpAndRegister = async (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'OTP functionality is currently disabled'
-  });
+  try {
+    const { phone, otp, name, password, carrier } = req.body;
+
+    // Validate required fields
+    if (!phone || !otp || !name || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required'
+      });
+    }
+
+    // Validate phone number
+    const phoneValidation = smsService.validatePhoneNumber(phone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: phoneValidation.error
+      });
+    }
+
+    const cleanedPhone = phoneValidation.cleanedNumber;
+
+    // Verify OTP
+    const otpDoc = await Otp.findOne({ 
+      phone: cleanedPhone,
+      otp: otp.trim()
+    });
+
+    if (!otpDoc) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP'
+      });
+    }
+
+    // Check if phone already registered
+    const existingUser = await User.findOne({ phone: cleanedPhone });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number already registered'
+      });
+    }
+
+    // Find students with matching parent phone for auto-linking
+    const matchingStudents = await Student.find({ parentPhone: cleanedPhone });
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Create parent user account
+    const userData = {
+      name: name.trim(),
+      username: cleanedPhone, // Use phone as username for parents
+      phone: cleanedPhone,
+      password: hashedPassword,
+      role: 'parent',
+      carrier: carrier || smsService.detectCarrier(cleanedPhone),
+      isPhoneVerified: true,
+      studentIds: matchingStudents.map(student => student._id)
+    };
+
+    const user = new User(userData);
+    await user.save();
+
+    // Clean up OTP
+    await Otp.deleteMany({ phone: cleanedPhone });
+
+    // Send welcome SMS
+    if (matchingStudents.length > 0) {
+      const studentNames = matchingStudents.map(s => s.name).join(', ');
+      await smsService.sendWelcomeSMS(cleanedPhone, userData.carrier, studentNames);
+    }
+
+    console.log('✅ Parent registered successfully:', cleanedPhone, 'with', matchingStudents.length, 'students');
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful! You can now login.',
+      studentsLinked: matchingStudents.length,
+      user: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        studentIds: user.studentIds
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ OTP verification error:', error);
+    
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`
+      });
+    }
+
+    if (error.name === 'ValidationError') {
+      const firstError = Object.values(error.errors)[0];
+      return res.status(400).json({
+        success: false,
+        message: firstError.message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed. Please try again.'
+    });
+  }
+};
+
+// NEW: Resend OTP
+const resendOtp = async (req, res) => {
+  try {
+    const { phone, carrier } = req.body;
+
+    const phoneValidation = smsService.validatePhoneNumber(phone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: phoneValidation.error
+      });
+    }
+
+    const cleanedPhone = phoneValidation.cleanedNumber;
+    const selectedCarrier = carrier || smsService.detectCarrier(cleanedPhone);
+
+    // Send new OTP
+    const otpResult = await smsService.sendOTPSMS(cleanedPhone, selectedCarrier);
+    
+    if (!otpResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to resend OTP. Please try again.'
+      });
+    }
+
+    // Update OTP in database
+    await Otp.deleteMany({ phone: cleanedPhone });
+    const otpDoc = new Otp({
+      phone: cleanedPhone,
+      otp: otpResult.otp
+    });
+    await otpDoc.save();
+
+    res.json({
+      success: true,
+      message: 'OTP resent successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Resend OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to resend OTP'
+    });
+  }
+};
+
+// NEW: Link additional students to parent account
+const linkStudentToParent = async (req, res) => {
+  try {
+    const { parentId, studentId } = req.body;
+
+    const parent = await User.findById(parentId);
+    const student = await Student.findById(studentId);
+
+    if (!parent || parent.role !== 'parent') {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent not found'
+      });
+    }
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Check if student is already linked
+    if (parent.studentIds.includes(studentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student already linked to this parent'
+      });
+    }
+
+    // Add student to parent's studentIds array
+    parent.studentIds.push(studentId);
+    await parent.save();
+
+    res.json({
+      success: true,
+      message: 'Student linked successfully',
+      studentCount: parent.studentIds.length
+    });
+
+  } catch (error) {
+    console.error('❌ Link student error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to link student'
+    });
+  }
+};
+
+// NEW: Get user profile with linked students
+const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .populate('studentIds', 'name studentId class feePaid balance')
+      .select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: user
+    });
+
+  } catch (error) {
+    console.error('❌ Get profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch profile'
+    });
+  }
 };
 
 module.exports = {
   register,
   login,
   sendOtp,
-  verifyOtpAndRegister
+  verifyOtpAndRegister,
+  resendOtp,
+  linkStudentToParent,
+  getProfile
 };
