@@ -70,14 +70,52 @@ router.get('/verify', (req, res) => {
 
 // Get available SMS carriers
 router.get('/carriers', (req, res) => {
-  const smsService = require('../services/smsService');
-  res.json({
-    success: true,
-    carriers: Object.keys(smsService.SMS_GATEWAYS).map(key => ({
-      value: key,
-      label: key.charAt(0).toUpperCase() + key.slice(1)
-    }))
-  });
+  try {
+    // Import SMS service with fallback
+    let SMS_GATEWAYS = {};
+    try {
+      const smsService = require('../services/smsService');
+      SMS_GATEWAYS = smsService.SMS_GATEWAYS || {};
+    } catch (error) {
+      console.warn('SMS service not available, using default carriers');
+    }
+    
+    // Default carriers if SMS service not available
+    const defaultCarriers = {
+      airtel: 'airtelmail.com',
+      jio: 'jiomail.com', 
+      vodafone: 'vodafonemail.com',
+      tmobile: 'tmomail.net',
+      verizon: 'vtext.com',
+      att: 'txt.att.net',
+      sprint: 'messaging.sprintpcs.com'
+    };
+    
+    const carriersToUse = Object.keys(SMS_GATEWAYS).length > 0 ? SMS_GATEWAYS : defaultCarriers;
+    
+    res.json({
+      success: true,
+      carriers: Object.keys(carriersToUse).map(key => ({
+        value: key,
+        label: key.charAt(0).toUpperCase() + key.slice(1)
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching carriers:', error);
+    // Return basic carriers as fallback
+    res.json({
+      success: true,
+      carriers: [
+        { value: 'airtel', label: 'Airtel' },
+        { value: 'jio', label: 'Jio' },
+        { value: 'vodafone', label: 'Vodafone' },
+        { value: 'tmobile', label: 'T-Mobile' },
+        { value: 'verizon', label: 'Verizon' },
+        { value: 'att', label: 'AT&T' },
+        { value: 'sprint', label: 'Sprint' }
+      ]
+    });
+  }
 });
 
 module.exports = router;
