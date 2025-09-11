@@ -3,28 +3,141 @@ const Student = require('../models/student');
 const Otp = require('../models/Otp');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 
-// Import SMS service with error handling
-let smsService = null;
-try {
-  smsService = require('../services/smsService');
-  console.log('✅ SMS Service loaded successfully');
-} catch (error) {
-  console.warn('⚠️ SMS Service not available:', error.message);
-  // Create minimal fallback functions
-  smsService = {
-    validatePhoneNumber: (phone) => {
-      const cleaned = phone.replace(/\D/g, '');
-      if (/^[6-9]\d{9}$/.test(cleaned)) {
-        return { isValid: true, cleanedNumber: cleaned, format: 'indian' };
+// Enhanced SMS service with better error handling
+const smsService = {
+  SMS_GATEWAYS: {
+    verizon: "vtext.com",
+    att: "txt.att.net", 
+    tmobile: "tmomail.net",
+    sprint: "messaging.sprintpcs.com",
+    airtel: "airtelmail.com",
+    jio: "jiomail.com",
+    vodafone: "vodafonemail.com"
+  },
+
+  createTransporter: () => {
+    console.log('🔧 Creating email transporter...');
+    console.log('📧 Email User:', process.env.EMAIL_USER);
+    console.log('🔑 Email Pass Length:', process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0);
+    
+    return nodemailer.createTransporter({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+  },
+
+  validatePhoneNumber: (phone) => {
+    const cleaned = phone.replace(/\D/g, '');
+    if (/^[6-9]\d{9}$/.test(cleaned)) {
+      return { isValid: true, cleanedNumber: cleaned, format: 'indian' };
+    }
+    return { isValid: false, error: 'Invalid phone number format' };
+  },
+
+  detectCarrier: (phoneNumber) => {
+    const firstDigit = phoneNumber.charAt(0);
+    if (['6', '7', '8', '9'].includes(firstDigit)) {
+      return 'airtel';
+    }
+    return 'tmobile';
+  },
+
+  generateOTP: () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  },
+
+  sendSMS: async (phoneNumber, carrier, message) => {
+    try {
+      console.log(`📤 Sending SMS to ${phoneNumber} via ${carrier}`);
+      
+      const gateway = smsService.SMS_GATEWAYS[carrier];
+      if (!gateway) {
+        throw new Error(`Unsupported carrier: ${carrier}`);
       }
-      return { isValid: false, error: 'Invalid phone number format' };
-    },
-    detectCarrier: () => 'airtel',
-    sendOTPSMS: async () => ({ success: false, error: 'SMS service not configured' }),
-    sendWelcomeSMS: async () => ({ success: false, error: 'SMS service not configured' })
-  };
-}
+
+      const transporter = smsService.createTransporter();
+      
+      // Test connection first
+      await transporter.verify();
+      console.log('✅ Email transporter verified successfully');
+      
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: `${phoneNumber}@${gateway}`,
+        subject: "",
+        text: message,
+      };
+
+      console.log('📧 Sending to:', `${phoneNumber}@${gateway}`);
+      const result = await transporter.sendMail(mailOptions);
+      
+      console.log('✅ SMS sent successfully:', result.messageId);
+      return {
+        success: true,
+        messageId: result.messageId,
+        message: "SMS sent successfully"
+      };
+    } catch (error) {
+      console.error('❌ SMS send error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
+  sendOTPSMS: async (phoneNumber, carrier) => {
+    try {
+      const otp = smsService.generateOTP();
+      const message = `Your Astra Preschool verification code is: ${otp}. This code will expire in 5 minutes. Do not share this code with anyone.`;
+      
+      console.log('🔢 Generated OTP:', otp);
+      const result = await smsService.sendSMS(phoneNumber, carrier, message);
+      
+      if (result.success) {
+        return {
+          success: true,
+          otp: otp,
+          message: "OTP sent successfully"
+        };
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('❌ OTP SMS error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
+  sendWelcomeSMS: async (phoneNumber, carrier, studentNames) => {
+    try {
+      const message = `Welcome to Astra Preschool! ${studentNames} registered successfully. You can now login to view details and make payments. Thank you!`;
+      return await smsService.sendSMS(phoneNumber, carrier, message);
+    } catch (error) {
+      console.error('❌ Welcome SMS error:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  sendPaymentConfirmationSMS: async (phoneNumber, carrier, paymentDetails) => {
+    try {
+      const { studentName, amount, receiptNumber } = paymentDetails;
+      const message = `Payment Confirmed! ₹${amount} received for ${studentName}. Receipt: ${receiptNumber}. Thank you! - Astra Preschool`;
+      return await smsService.sendSMS(phoneNumber, carrier, message);
+    } catch (error) {
+      console.error('❌ Payment confirmation SMS error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+};
 
 // Admin registration function (unchanged for backward compatibility)
 const register = async (req, res) => {
@@ -211,20 +324,22 @@ const login = async (req, res) => {
   }
 };
 
-// NEW: Send OTP for parent registration
+// Enhanced Send OTP with better debugging
 const sendOtp = async (req, res) => {
   try {
-    const { phone, carrier } = req.body;
+    console.log('🔍 OTP Request received:', req.body);
+    console.log('📧 Environment check:', {
+      emailUser: process.env.EMAIL_USER,
+      emailPassConfigured: !!process.env.EMAIL_PASS,
+      emailPassLength: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0
+    });
 
-    if (!smsService) {
-      return res.status(503).json({
-        success: false,
-        message: 'SMS service is not configured. Please contact administrator.'
-      });
-    }
+    const { phone, carrier } = req.body;
 
     // Validate phone number
     const phoneValidation = smsService.validatePhoneNumber(phone);
+    console.log('📱 Phone validation result:', phoneValidation);
+    
     if (!phoneValidation.isValid) {
       return res.status(400).json({
         success: false,
@@ -245,43 +360,67 @@ const sendOtp = async (req, res) => {
 
     // Auto-detect carrier if not provided
     const selectedCarrier = carrier || smsService.detectCarrier(cleanedPhone);
+    console.log('📡 Using carrier:', selectedCarrier);
 
     // Send OTP via SMS
+    console.log('📤 Attempting to send OTP SMS...');
     const otpResult = await smsService.sendOTPSMS(cleanedPhone, selectedCarrier);
+    console.log('📤 OTP SMS result:', {
+      success: otpResult.success,
+      error: otpResult.error || 'None',
+      otp: otpResult.otp || 'Not generated'
+    });
     
     if (!otpResult.success) {
+      console.log('❌ OTP sending failed:', otpResult.error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to send OTP. Please try again.'
+        message: 'Failed to send OTP: ' + otpResult.error,
+        debug: {
+          emailConfigured: !!process.env.EMAIL_USER,
+          carrier: selectedCarrier,
+          phone: cleanedPhone
+        }
       });
     }
 
     // Store OTP in database
-    await Otp.deleteMany({ phone: cleanedPhone }); // Remove any existing OTPs
+    await Otp.deleteMany({ phone: cleanedPhone });
     const otpDoc = new Otp({
       phone: cleanedPhone,
       otp: otpResult.otp
     });
     await otpDoc.save();
 
-    console.log('✅ OTP sent successfully to:', cleanedPhone);
+    console.log('✅ OTP sent and stored successfully:', {
+      phone: cleanedPhone,
+      otp: otpResult.otp,
+      carrier: selectedCarrier
+    });
 
     res.json({
       success: true,
       message: 'OTP sent successfully to your phone number',
-      phone: cleanedPhone
+      phone: cleanedPhone,
+      debug: {
+        carrier: selectedCarrier,
+        emailGateway: `${cleanedPhone}@${smsService.SMS_GATEWAYS[selectedCarrier]}`,
+        // Remove this in production:
+        testOtp: otpResult.otp
+      }
     });
 
   } catch (error) {
     console.error('❌ Send OTP error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to send OTP. Please try again.'
+      message: 'Failed to send OTP. Please try again.',
+      error: error.message
     });
   }
 };
 
-// NEW: Verify OTP and register parent
+// Verify OTP and register parent
 const verifyOtpAndRegister = async (req, res) => {
   try {
     const { phone, otp, name, password, carrier } = req.body;
@@ -352,8 +491,8 @@ const verifyOtpAndRegister = async (req, res) => {
     // Clean up OTP
     await Otp.deleteMany({ phone: cleanedPhone });
 
-    // Send welcome SMS if service is available
-    if (matchingStudents.length > 0 && smsService.sendWelcomeSMS) {
+    // Send welcome SMS if students found
+    if (matchingStudents.length > 0) {
       const studentNames = matchingStudents.map(s => s.name).join(', ');
       try {
         await smsService.sendWelcomeSMS(cleanedPhone, userData.carrier, studentNames);
@@ -403,17 +542,10 @@ const verifyOtpAndRegister = async (req, res) => {
   }
 };
 
-// NEW: Resend OTP
+// Resend OTP
 const resendOtp = async (req, res) => {
   try {
     const { phone, carrier } = req.body;
-
-    if (!smsService || !smsService.sendOTPSMS) {
-      return res.status(503).json({
-        success: false,
-        message: 'SMS service is not configured'
-      });
-    }
 
     const phoneValidation = smsService.validatePhoneNumber(phone);
     if (!phoneValidation.isValid) {
@@ -446,7 +578,10 @@ const resendOtp = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'OTP resent successfully'
+      message: 'OTP resent successfully',
+      debug: {
+        testOtp: otpResult.otp // Remove in production
+      }
     });
 
   } catch (error) {
@@ -458,7 +593,7 @@ const resendOtp = async (req, res) => {
   }
 };
 
-// NEW: Link additional students to parent account
+// Link additional students to parent account
 const linkStudentToParent = async (req, res) => {
   try {
     const { parentId, studentId } = req.body;
@@ -507,7 +642,7 @@ const linkStudentToParent = async (req, res) => {
   }
 };
 
-// NEW: Get user profile with linked students
+// Get user profile with linked students
 const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
@@ -535,6 +670,38 @@ const getProfile = async (req, res) => {
   }
 };
 
+// Test email configuration (temporary)
+const testEmailConfig = async (req, res) => {
+  try {
+    console.log('🧪 Testing email configuration...');
+    console.log('📧 EMAIL_USER:', process.env.EMAIL_USER);
+    console.log('🔑 EMAIL_PASS length:', process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 'NOT SET');
+    
+    const transporter = smsService.createTransporter();
+    await transporter.verify();
+    
+    res.json({
+      success: true,
+      message: 'Email configuration is working perfectly!',
+      config: {
+        emailUser: process.env.EMAIL_USER,
+        passLength: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Email test failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: {
+        code: error.code,
+        response: error.response
+      }
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -542,5 +709,6 @@ module.exports = {
   verifyOtpAndRegister,
   resendOtp,
   linkStudentToParent,
-  getProfile
+  getProfile,
+  testEmailConfig // Remove this in production
 };
