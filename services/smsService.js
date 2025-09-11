@@ -14,7 +14,7 @@ const SMS_GATEWAYS = {
 
 // Create nodemailer transporter
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({  // ✅ FIXED: Removed the 'r'
     service: "gmail",
     auth: {
       user: process.env.EMAIL_USER,
@@ -30,7 +30,6 @@ const sendSMS = async (phoneNumber, carrier, message) => {
     if (!gateway) {
       throw new Error(`Unsupported carrier: ${carrier}`);
     }
-
     const transporter = createTransporter();
     
     const mailOptions = {
@@ -39,7 +38,6 @@ const sendSMS = async (phoneNumber, carrier, message) => {
       subject: "", // Empty subject for SMS
       text: message,
     };
-
     const result = await transporter.sendMail(mailOptions);
     console.log(`✅ SMS sent successfully to ${phoneNumber} via ${carrier}:`, result.messageId);
     return {
@@ -139,12 +137,10 @@ const detectCarrier = (phoneNumber) => {
   // This is a simplified carrier detection
   // In a real implementation, you'd use a carrier lookup service
   const firstDigit = phoneNumber.charAt(0);
-  
   // Basic Indian number carrier detection
   if (['6', '7', '8', '9'].includes(firstDigit)) {
     return 'airtel'; // Default to Airtel for Indian numbers
   }
-  
   return 'tmobile'; // Default fallback
 };
 
