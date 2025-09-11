@@ -11,10 +11,8 @@ try {
   console.log('✅ SMS Service loaded successfully');
 } catch (error) {
   console.warn('⚠️ SMS Service not available:', error.message);
-  
   // Create fallback SMS service
   const nodemailer = require('nodemailer');
-  
   smsService = {
     SMS_GATEWAYS: {
       verizon: "vtext.com",
@@ -25,7 +23,6 @@ try {
       jio: "jiomail.com",
       vodafone: "vodafonemail.com"
     },
-
     validatePhoneNumber: (phone) => {
       const cleaned = phone.replace(/\D/g, '');
       if (/^[6-9]\d{9}$/.test(cleaned)) {
@@ -33,7 +30,6 @@ try {
       }
       return { isValid: false, error: 'Invalid phone number format' };
     },
-
     detectCarrier: (phoneNumber) => {
       const firstDigit = phoneNumber.charAt(0);
       if (['6', '7', '8', '9'].includes(firstDigit)) {
@@ -41,17 +37,15 @@ try {
       }
       return 'tmobile';
     },
-
     generateOTP: () => {
       return Math.floor(100000 + Math.random() * 900000).toString();
     },
-
-    createTransporter: () => {
+    createTransport: () => {  // ✅ Fixed method name (removed 'r')
       console.log('🔧 Creating nodemailer transporter...');
       console.log('📧 Email User:', process.env.EMAIL_USER);
       console.log('🔑 Email Pass Length:', process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0);
       
-      return nodemailer.createTransporter({
+      return nodemailer.createTransport({  // ✅ Fixed - removed 'r' from createTransporter
         service: "gmail",
         auth: {
           user: process.env.EMAIL_USER,
@@ -59,7 +53,6 @@ try {
         },
       });
     },
-
     sendSMS: async (phoneNumber, carrier, message) => {
       try {
         console.log(`📤 Attempting SMS to ${phoneNumber} via ${carrier}`);
@@ -68,8 +61,7 @@ try {
         if (!gateway) {
           throw new Error(`Unsupported carrier: ${carrier}`);
         }
-
-        const transporter = smsService.createTransporter();
+        const transporter = smsService.createTransport();  // ✅ Fixed method name
         
         // Test connection first
         console.log('🔍 Verifying email connection...');
@@ -82,7 +74,6 @@ try {
           subject: "",
           text: message,
         };
-
         console.log('📧 Sending to email gateway:', `${phoneNumber}@${gateway}`);
         const result = await transporter.sendMail(mailOptions);
         
@@ -101,7 +92,6 @@ try {
         };
       }
     },
-
     sendOTPSMS: async (phoneNumber, carrier) => {
       try {
         const otp = smsService.generateOTP();
@@ -127,7 +117,6 @@ try {
         };
       }
     },
-
     sendWelcomeSMS: async (phoneNumber, carrier, studentNames) => {
       try {
         const message = `Welcome to Astra Preschool! ${studentNames} registered successfully. You can now login to view details and make payments. Thank you!`;
@@ -137,7 +126,6 @@ try {
         return { success: false, error: error.message };
       }
     },
-
     sendPaymentConfirmationSMS: async (phoneNumber, carrier, paymentDetails) => {
       try {
         const { studentName, amount, receiptNumber } = paymentDetails;
