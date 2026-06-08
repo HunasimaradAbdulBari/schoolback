@@ -6,12 +6,14 @@ const {
   deleteStudent,
 } = require('../controllers/studentController');
 const auth = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
-router.use(auth); // All routes require authentication
+// All routes require authentication
+router.use(auth);
 
-router.post('/', createStudent);
+router.post('/', upload.single('studentPhoto'), createStudent);
 router.get('/', getStudents);
 router.put('/:id', updateStudent);
 router.delete('/:id', deleteStudent);

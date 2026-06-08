@@ -1,11 +1,21 @@
 const express = require('express');
+const {
+  register,
+  login
+} = require('../controllers/authController');
+
 const router = express.Router();
-const { register, login } = require('../controllers/authController');
 
-// Route to register a new user
+// ✅ Clean auth routes - OTP system completely removed
 router.post('/register', register);
-
-// Route to login an existing user
 router.post('/login', login);
+
+// ✅ NEW: Test endpoint for checking if API is reachable
+router.get('/test', (req, res) => {
+  res.json({ 
+    message: 'Auth API is working', 
+    timestamp: new Date().toISOString() 
+  });
+});
 
 module.exports = router;
